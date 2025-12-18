@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 import smartsheet,json,argparse,sys,re,os
 from datetime import datetime, timedelta
@@ -28,15 +28,15 @@ sheet_id = args.sheet_id
 board_id = args.board_id
 
 if start_date is None:
-    print "Error: Please provide a start date!"
+    print("Error: Please provide a start date!")
     sys.exit(1)
 
 if sheet_id is None:
-    print "Error: Smartsheets sheet ID must be provided!"
+    print("Error: Smartsheets sheet ID must be provided!")
     sys.exit(1)
 
 if board_id is None:
-    print "Error: Smartsheets board ID must be provided in order to build a like back to the origin of the points!"
+    print("Error: Smartsheets board ID must be provided in order to build a like back to the origin of the points!")
     sys.exit(1)
 
 if points_grouping is None:
@@ -45,7 +45,7 @@ if points_grouping is None:
 
 api_token = os.environ.get(API_TOKEN_NAME)
 if not api_token:
-    print "Error: Smartsheets API Key is Required!"
+    print("Error: Smartsheets API Key is Required!")
     sys.exit(1)
 
 
@@ -91,10 +91,10 @@ for r in sheet.rows:
         if re.search("First and Thirds.*", row["Program Name"]):
             pool="ServicesSupport"
         
-        print "{0}/SS{1}/{2}/{3} [pool={4},board={5},rowId={6},linkId={7}]".format(points_grouping, row["id"], recipient,int(row["Points"]),pool,board_id,row["id"],row["Row ID"])
+        print("{0}/SS{1}/{2}/{3} [pool={4},board={5},rowId={6},linkId={7}]".format(points_grouping, row["id"], recipient,int(row["Points"]),pool,board_id,row["id"],row["Row ID"]))
         
         # outputs Giveback "duplicate records" as output. Used to prevent historical duplicate allocation of points  
-        #print "\"SS{0}.{1}\",".format(row["id"],recipient)
+        #print("\"SS{0}.{1}\",".format(row["id"],recipient))
 
 
 

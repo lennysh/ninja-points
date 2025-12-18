@@ -1,6 +1,6 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
-import os, json, requests, sys, argparse, collections, re, operator, csv
+import os, json, requests, sys, argparse, collections.abc, re, operator, csv
 from datetime import datetime, timedelta
 from dateutil.relativedelta import relativedelta
 
@@ -85,7 +85,7 @@ def process_item(final_dict, history_type, key):
     final_dict['statistics'][history_type] += 1
 
 def plural_items(text, obj):
-    if obj is not None and (isinstance(obj, collections.Iterable) and len(obj) == 1) or obj == 1:
+    if obj is not None and (isinstance(obj, collections.abc.Iterable) and len(obj) == 1) or obj == 1:
         return text[:-1]
     else:
         return text
@@ -167,19 +167,19 @@ session = requests.Session()
 error = login(session, server, rocketchat_username, rocketchat_password, rocketchat_auth_token, rocketchat_user_id)
 
 if error is not None:
-    print error
+    print(error)
     sys.exit(1)
 
 channels = get_channels(session, server)
 
 filter_channels(channels, filtered_text)
 
-newest_date = datetime.now().utcnow()
+newest_date = datetime.utcnow()
 oldest_date = newest_date - relativedelta(days=days)
 
 formatted_time_period = "{0} - {1}".format(oldest_date.strftime("%m/%d/%Y"), newest_date.strftime("%m/%d/%Y"))
 
-print "=== Rocketchat Statistics For {0} ===\n".format(formatted_time_period)
+print("=== Rocketchat Statistics For {0} ===\n".format(formatted_time_period))
 if len(channels) > 0:
     for channel_index, channel in enumerate(channels):
         
@@ -192,20 +192,20 @@ if len(channels) > 0:
         users_removed = channel_history_stats['statistics']['removed']
         total_messages = channel_history_stats['statistics']['messages']
 
-        print formatted_channel_name
-        print "  {0} {1} Joined".format(users_joined, plural_items("Users", users_joined))
-        print "  {0} {1} Removed".format(users_removed, plural_items("Users", users_removed))
-        print "  {0} {1}".format(total_messages, plural_items("Messages", total_messages))
+        print(formatted_channel_name)
+        print("  {0} {1} Joined".format(users_joined, plural_items("Users", users_joined)))
+        print("  {0} {1} Removed".format(users_removed, plural_items("Users", users_removed)))
+        print("  {0} {1}".format(total_messages, plural_items("Messages", total_messages)))
 
         output_file_user_messages = ""
 
-        for username, username_num_messages in sorted(channel_history_stats['messages'].iteritems(), key=lambda (k,v): (v,k), reverse=True):
+        for username, username_num_messages in sorted(channel_history_stats['messages'].items(), key=lambda kv: (kv[1], kv[0]), reverse=True):
             
             user_messages = "{0} - {1:.2f}% - {2} {3}".format(username, (float(username_num_messages)/float(total_messages)*100), username_num_messages, plural_items("Messages", username_num_messages))
             
-            print "    * {0}".format(user_messages)
+            print("    * {0}".format(user_messages))
 
-            if output_file_user_messages is not "":
+            if output_file_user_messages != "":
                 output_file_user_messages += "\n"
             
             output_file_user_messages += user_messages
@@ -224,4 +224,4 @@ if len(channels) > 0:
                 write_ouput_file_record(output_file, output_file_row_records)
 
 else:
-    print "No Rocketchat Channels Match the description '{0}'".format(filtered_text)
+    print("No Rocketchat Channels Match the description '{0}'".format(filtered_text))

@@ -1,6 +1,6 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
-import os, json, requests, sys, argparse, re
+import os, json, requests, sys, argparse, re, urllib.parse
 from datetime import datetime, timedelta
 from dateutil.relativedelta import relativedelta
 
@@ -12,13 +12,21 @@ DEFAULT_START_DATE_MONTH = '03'
 DEFAULT_START_DATE_DAY = '01'
 UNLABELED = 'unlabeled'
 
-def handle_pagination_items(session, url):
-#    print "pagination called: {}".format(url)
-    pagination_request = session.get(url)
+def handle_pagination_items(session, url, params=None):
+#    print("pagination called: {}".format(url))
+    pagination_request = session.get(url, params=params)
+    if pagination_request.status_code != 200:
+        # Print error details for debugging
+        try:
+            error_json = pagination_request.json()
+            print("Error: HTTP {} - {}".format(pagination_request.status_code, json.dumps(error_json, indent=2)))
+        except:
+            print("Error: HTTP {} - {}".format(pagination_request.status_code, pagination_request.text[:500]))
     pagination_request.raise_for_status()
 
     if 'next' in pagination_request.links and pagination_request.links['next']:
-        return pagination_request.json()['items'] + handle_pagination_items(session, pagination_request.links['next']['url'])
+        # Pagination links already contain the full URL with query params, so pass None
+        return pagination_request.json()['items'] + handle_pagination_items(session, pagination_request.links['next']['url'], params=None)
     else:
         return pagination_request.json()['items']
 
@@ -40,17 +48,17 @@ def valid_date(s):
 
 def encode_text(text):
     if text:
-        return text.encode("utf-8")
-
+        # In Python 3, strings are already unicode, so just return as-is
+        return text
     return text
 
 def get_org_repos(session, github_org):
     
-    return handle_pagination_items(session, "https://api.github.com/orgs/{0}/repos".format(github_org))
+    return handle_pagination_items(session, "https://api.github.com/orgs/{0}/repos".format(github_org), params=None)
 
 def get_org_members(session, github_org):
 
-    return handle_pagination_items(session, "https://api.github.com/orgs/{0}/members".format(github_org))
+    return handle_pagination_items(session, "https://api.github.com/orgs/{0}/members".format(github_org), params=None)
 
 def get_pr(session, url):
     pr_request = session.get(url)
@@ -64,10 +72,38 @@ def get_reviews(session, url):
 
     return pr_request.json()
 
-def get_org_search_issues(session, start_date, github_org):
+def build_search_query(github_org, date_str, issue_type):
+    """Build a GitHub search query string for a specific type (issue or pr)"""
+    query_parts = [
+        "user:{}".format(github_org),
+        "updated:>={}".format(date_str),
+        "state:closed",
+        issue_type
+    ]
+    query_with_plus = "+".join(query_parts)
+    # URL-encode special characters but preserve + signs
+    encoded = urllib.parse.quote(query_with_plus, safe='')
+    # Replace %2B (encoded +) back to + since GitHub search API expects + for spaces
+    encoded_query = encoded.replace('%2B', '+')
+    return encoded_query
 
-    query = "https://api.github.com/search/issues?q=user:{}+updated:>={}+archived:false+state:closed&per_page=200".format(github_org, start_date.date().isoformat())
-    return handle_pagination_items(session, query)
+def get_org_search_issues(session, start_date, github_org):
+    # GitHub API now requires 'is:issue' or 'is:pull-request' in the query
+    # We need to search for issues and PRs separately, then combine results
+    date_str = start_date.date().isoformat()
+    
+    # Search for issues
+    issues_query = build_search_query(github_org, date_str, "is:issue")
+    issues_url = "https://api.github.com/search/issues?q={}&per_page=200".format(issues_query)
+    issues_results = handle_pagination_items(session, issues_url, params=None)
+    
+    # Search for pull requests
+    prs_query = build_search_query(github_org, date_str, "is:pr")
+    prs_url = "https://api.github.com/search/issues?q={}&per_page=200".format(prs_query)
+    prs_results = handle_pagination_items(session, prs_url, params=None)
+    
+    # Combine results
+    return issues_results + prs_results
 
 def process_labels(labels):
     label_dict = {}
@@ -118,7 +154,7 @@ def repo_is_included(issue, repo_matcher, repo_excluder):
     repo_name = issue['repository_url'].split('/')[-1]
     repo_name_matches = True if re.match(repo_matcher, repo_name) != None else False
     repo_name_excluded = True if None != repo_excluder and re.match(repo_excluder, repo_name) != None else False
-    #print "{0} - matches? {1}, excluded? {2}".format(repo_name, repo_name_matches, repo_name_excluded)
+    #print("{0} - matches? {1}, excluded? {2}".format(repo_name, repo_name_matches, repo_name_excluded))
     if repo_name_matches and repo_name_excluded == False:
         return True
     return False;
@@ -149,7 +185,7 @@ if start_date is None:
 github_api_token = os.environ.get(GITHUB_API_TOKEN_NAME)
 
 if not github_api_token:
-    print "Error: GitHub API Key is Required!"
+    print("Error: GitHub API Key is Required!")
     sys.exit(1)
 
 session = requests.Session()
@@ -174,7 +210,7 @@ for issue in org_search_issues:
     if not repo_is_included(issue, repo_matcher, repo_excluder):
         continue
 
-#    print "{}:".format(issue['id'])
+#    print("{}:".format(issue['id']))
     issue_author_id = issue['user']['id']
     issue_author_login = issue['user']['login']
 
@@ -259,40 +295,40 @@ for issue in org_search_issues:
             closed_issue_author.append(issue)
             closed_issues[closed_issue_author_id] = closed_issue_author 
 
-print "=== Statistics for GitHub Organization '{0}' ====".format(github_org)      
+print("=== Statistics for GitHub Organization '{0}' ====".format(github_org))      
 
 
-print "\n== General PR's ==\n"
-for key, value in general_prs.iteritems():
+print("\n== General PR's ==\n")
+for key, value in general_prs.items():
     # Determine whether to print out Label
     if(show_label(key, input_labels)):
         if (human_readable):
-            print "{}:".format(key)
-        for label_key, label_value in value.iteritems():
+            print("{}:".format(key))
+        for label_key, label_value in value.items():
             if (human_readable):
-                print "  {0} - {1}".format(label_key, len(label_value))
+                print("  {0} - {1}".format(label_key, len(label_value)))
             for issue_value in label_value:
                 if (not human_readable):
-                    print "Pull Requests/GH{0}/{1}/{2} [org={3}, board={4}, linkId={5}]".format(issue_value['id'], label_key, 1, issue_value['repository_url'].split('/')[-2], issue_value['repository_url'].split('/')[-1], issue_value['number'])
+                    print("Pull Requests/GH{0}/{1}/{2} [org={3}, board={4}, linkId={5}]".format(issue_value['id'], label_key, 1, issue_value['repository_url'].split('/')[-2], issue_value['repository_url'].split('/')[-1], issue_value['number']))
                 else:
-                    print "    {0} - {1}".format(encode_text(issue_value['repository_url'].split('/')[-1]), encode_text(issue_value['title']))
+                    print("    {0} - {1}".format(encode_text(issue_value['repository_url'].split('/')[-1]), encode_text(issue_value['title'])))
 
-print "\n== Reviewed PR's ==\n"
-for key, value in reviewed_prs.iteritems():
+print("\n== Reviewed PR's ==\n")
+for key, value in reviewed_prs.items():
     if (not human_readable):
-        for issue_key, issue_value in value.iteritems():
-            print "Reviewed Pull Requests/GH{0}/{1}/{2} [org={3}, board={4}, linkId={5}]".format(issue_value['id'], key, 1, issue_value['repository_url'].split('/')[-2], issue_value['repository_url'].split('/')[-1], issue_value['number'])
+        for issue_key, issue_value in value.items():
+            print("Reviewed Pull Requests/GH{0}/{1}/{2} [org={3}, board={4}, linkId={5}]".format(issue_value['id'], key, 1, issue_value['repository_url'].split('/')[-2], issue_value['repository_url'].split('/')[-1], issue_value['number']))
     else:
-        print "{0} - {1}".format(key, len(value))
-        for issue_key, issue_value in value.iteritems():
-            print "   {0} - {1}".format(encode_text(issue_value['repository_url'].split('/')[-1]), encode_text(issue_value['title']))
+        print("{0} - {1}".format(key, len(value)))
+        for issue_key, issue_value in value.items():
+            print("   {0} - {1}".format(encode_text(issue_value['repository_url'].split('/')[-1]), encode_text(issue_value['title'])))
 
-print "\n== Closed Issues ==\n"
-for key, value in closed_issues.iteritems():
+print("\n== Closed Issues ==\n")
+for key, value in closed_issues.items():
     if (not human_readable):
-        print "Closed Issues/GH{0}/{1}/{2} [org={3}, board={4}, linkId={5}]".format(key, value[0]['assignee']['login'], len(value), value[0]['repository_url'].split('/')[-2], value[0]['repository_url'].split('/')[-1], value[0]['number'])
+        print("Closed Issues/GH{0}/{1}/{2} [org={3}, board={4}, linkId={5}]".format(key, value[0]['assignee']['login'], len(value), value[0]['repository_url'].split('/')[-2], value[0]['repository_url'].split('/')[-1], value[0]['number']))
     else:
-        print "{0} - {1}".format(value[0]['assignee']['login'], len(value))
+        print("{0} - {1}".format(value[0]['assignee']['login'], len(value)))
         for issue_value in value:
-            print "   {0} - {1}".format(encode_text(value['repository_url'].split('/')[-1]), encode_text(value[0]['title']))
+            print("   {0} - {1}".format(encode_text(value['repository_url'].split('/')[-1]), encode_text(value[0]['title'])))
 

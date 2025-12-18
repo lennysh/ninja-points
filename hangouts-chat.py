@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 from oauth2client.service_account import ServiceAccountCredentials
 from os import path
@@ -73,8 +73,8 @@ def handle_pagination_items(session, url, key, next_page_token=None):
 
 def encode_text(text):
     if text:
-        return text.encode("utf-8")
-
+        # In Python 3, strings are already unicode, so just return as-is
+        return text
     return text
 
 parser = argparse.ArgumentParser(description='Gather Google Hangouts Statistics.')
@@ -86,11 +86,11 @@ show_members = args.show_members
 service_account_key_file = os.environ.get(SERVICE_ACCOUNT_KEY_FILE_NAME)
 
 if not service_account_key_file:
-    print "Error: Service Account Key File Location is Required!"
+    print("Error: Service Account Key File Location is Required!")
     sys.exit(1)
 
 if not path.exists(service_account_key_file):
-    print "Error: Service Account Key File Does Not Exist!"
+    print("Error: Service Account Key File Does Not Exist!")
     sys.exit(1)    
 
 session = requests.Session()
@@ -98,16 +98,16 @@ session = requests.Session()
 error = login(session, service_account_key_file)
 
 if error is not None:
-    print error
+    print(error)
     sys.exit(1)
 
 spaces_with_members = get_spaces_with_members(session)
 
-print "=== Statistics for Google Hangouts Chat\n"
+print("=== Statistics for Google Hangouts Chat\n")
 
-for key, value in spaces_with_members.iteritems():
-    print "- {0} - {1} Members".format(encode_text(value["space"]["displayName"]), len(value["members"]))
+for key, value in spaces_with_members.items():
+    print("- {0} - {1} Members".format(encode_text(value["space"]["displayName"]), len(value["members"])))
 
     if show_members is not None:
         for member in value["members"]:
-            print "   - {0}".format(encode_text(member["member"]["displayName"]))
+            print("   - {0}".format(encode_text(member["member"]["displayName"])))

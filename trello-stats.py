@@ -1,6 +1,6 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
-import os, json, requests, sys, argparse, collections, re
+import os, json, requests, sys, argparse, collections.abc, re
 from datetime import datetime, timedelta
 from dateutil.relativedelta import relativedelta
 
@@ -64,11 +64,11 @@ def get_member(session, member_id):
 		    requestCount_member+=1
 		    member_request.raise_for_status()
 		    memberCache[member_id]=member_request.json()
-		    if debug: print "get_member:: memberCache.add({0})".format(memberCache[member_id]['username'])
+		    if debug: print("get_member:: memberCache.add({0})".format(memberCache[member_id]['username']))
 		return memberCache.get(member_id)
 
 def plural_items(text, obj):
-    if obj is not None and (isinstance(obj, collections.Iterable) and len(obj) == 1) or obj == 1:
+    if obj is not None and (isinstance(obj, collections.abc.Iterable) and len(obj) == 1) or obj == 1:
         return text[:-1]
     else:
         return text
@@ -83,8 +83,8 @@ def calculate_points(text):
 
 def encode_text(text):
     if text:
-        return text.encode("utf-8")
-
+        # In Python 3, strings are already unicode, so just return as-is
+        return text
     return text
 
 def preload_member_cache_from_org(session, org_id):
@@ -108,7 +108,7 @@ def preload_member_cache_from_board(session, board_id):
 
 def add_member_to_cache(member):
     if member['id'] not in memberCache:
-        if debug: print "add_member_to_cache:: memberCache.add({0})".format(member['username'])
+        if debug: print("add_member_to_cache:: memberCache.add({0})".format(member['username']))
         memberCache[member['id']] = {"id":member['id'], "username":member['username'], "fullName":member['fullName']}
 
 
@@ -118,7 +118,7 @@ trello_api_token = os.environ.get(TRELLO_API_TOKEN_NAME)
 
 
 if not trello_api_key or not trello_api_token:
-    print "Error: Trello API Key and API Token are Required!"
+    print("Error: Trello API Key and API Token are Required!")
     sys.exit(1)
 
 parser = argparse.ArgumentParser(description='Gather Trello Statistics.')
@@ -193,12 +193,12 @@ for card in resp_cards['cards']:
 
             members_items[member_id] = member_items
             if (not human_readable):
-                print "{0}/TR{1}/{2}/{3} [linkId={4},board={5}]".format(points_grouping, card_id, get_member(session, member_id)['username'], points, card['shortLink'], card['board']['name'])
+                print("{0}/TR{1}/{2}/{3} [linkId={4},board={5}]".format(points_grouping, card_id, get_member(session, member_id)['username'], points, card['shortLink'], card['board']['name']))
 
 
 if (human_readable):
-    print "=== Statistics for Trello Team '{0}' ====\n".format(encode_text(org_response['displayName']) if 'displayName' in org_response else encode_text(org_response['name']))
-    for key, value in members_items.iteritems():
+    print("=== Statistics for Trello Team '{0}' ====\n".format(encode_text(org_response['displayName']) if 'displayName' in org_response else encode_text(org_response['name'])))
+    for key, value in members_items.items():
         member = get_member(session, key)
         value_points = value['points']
         value_cards = value['cards']
@@ -206,8 +206,8 @@ if (human_readable):
         if username is not None and member['username'] != username:
             continue
 
-        print "{0} has {1} {2} - {3} {4}".format(encode_text(member['username']), len(value_cards), plural_items("cards", value_cards), value_points, plural_items("points", value_points))
+        print("{0} has {1} {2} - {3} {4}".format(encode_text(member['username']), len(value_cards), plural_items("cards", value_cards), value_points, plural_items("points", value_points)))
         for card in value['cards']:
-            print "   - Board: {0} | Card: {1}".format(encode_text(cards[card]['board']['name']), encode_text(cards[card]['name']))
+            print("   - Board: {0} | Card: {1}".format(encode_text(cards[card]['board']['name']), encode_text(cards[card]['name'])))
 
-if debug: print "REQUESTS: org={0}, orgMembers={1}, member={2}, boardMembers={3}, cards={4}".format(requestCount_org, requestCount_orgMembers, requestCount_member, requestCount_boardMembers, requestCount_cards)
+if debug: print("REQUESTS: org={0}, orgMembers={1}, member={2}, boardMembers={3}, cards={4}".format(requestCount_org, requestCount_orgMembers, requestCount_member, requestCount_boardMembers, requestCount_cards))

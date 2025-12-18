@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 import os
 import json
@@ -7,7 +7,7 @@ import sys
 import pytz
 import argparse
 import dateutil.parser
-import urllib
+import urllib.parse
 import re
 from datetime import datetime, timedelta
 from dateutil.relativedelta import relativedelta
@@ -30,8 +30,8 @@ is_debug = False
 
 def encode_text(text):
     if text:
-        return text.encode("utf-8")
-
+        # In Python 3, strings are already unicode, so just return as-is
+        return text
     return text
 
 
@@ -55,23 +55,23 @@ def valid_date(s):
 
 def handle_pagination_items(session, url):
     if is_debug:
-        print "DEBUG:: handle_pagination_items(): url = {0}".format(url)
+        print("DEBUG:: handle_pagination_items(): url = {0}".format(url))
     pagination_request = session.get(url)
     pagination_request.raise_for_status()
 
-    if 'next' in pagination_request.headers["Link"] and pagination_request.links['next']:
+    if 'next' in pagination_request.headers.get("Link", "") and pagination_request.links.get('next'):
         return pagination_request.json() + handle_pagination_items(session, pagination_request.links['next']['url'])
     else:
         return pagination_request.json()
 
 def get_group(session, server, group_name):
-    group = session.get("{0}/api/v4/groups/{1}".format(server, urllib.quote(group_name, safe='')))
+    group = session.get("{0}/api/v4/groups/{1}".format(server, urllib.parse.quote(group_name, safe='')))
     global req_group
     result = group.json()
 
     if is_debug:
-        print "DEBUG:: Group Data"
-        print "  {0}".format(json.dumps(result, indent=4, sort_keys=True))
+        print("DEBUG:: Group Data")
+        print("  {0}".format(json.dumps(result, indent=4, sort_keys=True)))
 
     return result
 
@@ -82,8 +82,8 @@ def get_project(session, project_id):
         project_cache[project_id]=project_request.json()
 
         if is_debug:
-            print "DEBUG:: Added project data to cache"
-            print "  {0}".format(json.dumps(project_cache[project_id], indent=4, sort_keys=True))
+            print("DEBUG:: Added project data to cache")
+            print("  {0}".format(json.dumps(project_cache[project_id], indent=4, sort_keys=True)))
     else:
         project_cache.get(project_id)
 
@@ -93,12 +93,12 @@ def is_data_item_allowed(item, group, session, repo_matcher):
     include_item = False
 
     project = get_project(session, item["project_id"])
-    project_is_org_child = re.match("^{0}\/".format(group["path"]), project["path_with_namespace"]) != None
-    item_matches = re.match(repo_matcher, project["path_with_namespace"]) != None
+    project_is_org_child = re.match("^{0}\/".format(group["path"]), project["path_with_namespace"]) is not None
+    item_matches = repo_matcher.match(project["path_with_namespace"]) is not None
 
     if project_is_org_child and item_matches:
         if is_debug:
-            print "DEBUG:: Including item - {0}".format(item["references"]["full"])
+            print("DEBUG:: Including item - {0}".format(item["references"]["full"]))
         include_item = True
 
     return include_item
@@ -109,7 +109,7 @@ def get_group_project_data(data_type, session, server, group, start_date, repo_m
     base_url = "{0}/api/v4/groups/{1}/{2}".format(server, group["id"], data_type)
 
     if is_debug:
-        print "DEBUG:: Getting {0} group {1}".format(group["path"], data_type)
+        print("DEBUG:: Getting {0} group {1}".format(group["path"], data_type))
 
     query_state = "&state="
     if data_type == "issues":
@@ -124,7 +124,7 @@ def get_group_project_data(data_type, session, server, group, start_date, repo_m
     query_string = "?scope=all&per_page=1000{0}{1}".format(query_state, query_date)
 
     if is_debug:
-        print "DEBUG:: Query URL: {0}".format(base_url+query_string)
+        print("DEBUG:: Query URL: {0}".format(base_url+query_string))
 
     query_result = handle_pagination_items(session, base_url+query_string)
 
@@ -133,7 +133,7 @@ def get_group_project_data(data_type, session, server, group, start_date, repo_m
             allowed_data.append(item)
 
     if is_debug:
-        print "DEBUG:: ALLOWED_DATA - {0}\n{1}".format(data_type, json.dumps(allowed_data, indent=4, sort_keys=True))
+        print("DEBUG:: ALLOWED_DATA - {0}\n{1}".format(data_type, json.dumps(allowed_data, indent=4, sort_keys=True)))
 
     return allowed_data
 
@@ -162,7 +162,7 @@ gitlab_api_token = os.environ.get(GITLAB_API_TOKEN_NAME)
 gitlab_server = os.getenv(GITLAB_SERVER_NAME, GITLAB_SERVER_DEFAULT)
 
 if not gitlab_api_token:
-    print "Error: GitLab API Token is Required!"
+    print("Error: GitLab API Token is Required!")
     sys.exit(1)
 
 session = requests.Session()
@@ -174,7 +174,7 @@ session.headers = {
 group = get_group(session, gitlab_server, gitlab_group)
 
 if group is None:
-    print "Unable to Locate Group!"
+    print("Unable to Locate Group!")
     sys.exit(1)
 
 
@@ -187,10 +187,10 @@ for mr in group_merge_requests:
 
     if dateutil.parser.parse(mr["merged_at"]) < start_date:
         if is_debug:
-            print "DEBUG:: Omit {0} MR {1} {2}/{3}".format(mr["state"], mr["merged_at"], mr['id'], mr['title'])
+            print("DEBUG:: Omit {0} MR {1} {2}/{3}".format(mr["state"], mr["merged_at"], mr['id'], mr['title']))
         continue
     if is_debug:
-        print "DEBUG:: Incl {0} MR {1} {2}/{3}".format(mr["state"], mr["merged_at"], mr['id'], mr['title'])
+        print("DEBUG:: Incl {0} MR {1} {2}/{3}".format(mr["state"], mr["merged_at"], mr['id'], mr['title']))
 
     # Filter out unwanted mr users (if username is specified, then we're only interested in MRs that have that user either the author or merger)
     if username is not None and (mr["author"]["username"] != username or mr["merged_by"]["username"] != username):
@@ -198,7 +198,7 @@ for mr in group_merge_requests:
 
     # Filter out if merged == author
     if mr["author"]["username"] == mr["merged_by"]["username"]:
-        print "# Error: Author==Merged_by {0} {1} {2}".format(mr['id'], mr["author"]["username"], mr['title'])
+        print("# Error: Author==Merged_by {0} {1} {2}".format(mr['id'], mr["author"]["username"], mr['title']))
         continue
 
     # Merged MRs
@@ -227,10 +227,10 @@ for iss in group_issues:
 
     if dateutil.parser.parse(iss["closed_at"]) < start_date:
         if is_debug:
-            print "DEBUG:: Omit {0} Issue {1} {2}/{3} (shortId={4})".format(iss["state"], iss["closed_at"], iss['id'], iss['title'], iss['iid'])
+            print("DEBUG:: Omit {0} Issue {1} {2}/{3} (shortId={4})".format(iss["state"], iss["closed_at"], iss['id'], iss['title'], iss['iid']))
         continue
     if is_debug:
-        print "DEBUG:: Incl {0} Issue {1} {2}/{3} (shortId={4})".format(iss["state"], iss["closed_at"], iss['id'], iss['title'], iss['iid'])
+        print("DEBUG:: Incl {0} Issue {1} {2}/{3} (shortId={4})".format(iss["state"], iss["closed_at"], iss['id'], iss['title'], iss['iid']))
 
     # Filter out if closed_by == author
     if iss["author"]["username"] == iss["closed_by"]["username"]:
@@ -242,7 +242,7 @@ for iss in group_issues:
 
     # Filter out unwanted users
     if username is not None and (iss["author"]["username"] != username or iss["closed_by"]["username"] != username):
-        print "# Info: Filtered out : Issue was opened by {0}, and closed by {1}. User {2} was specified as filter".format(iss["author"]["username"], iss["closed_by"]["username"], username)
+        print("# Info: Filtered out : Issue was opened by {0}, and closed by {1}. User {2} was specified as filter".format(iss["author"]["username"], iss["closed_by"]["username"], username))
         continue
 
     # Closed Issues
@@ -254,45 +254,45 @@ for iss in group_issues:
     closed_issues[iss["closed_by"]["username"]] = closed_by_iss
 
 
-print "=== Statistics for GitLab Group '{0}' ====".format(gitlab_group)
+print("=== Statistics for GitLab Group '{0}' ====".format(gitlab_group))
 
-print "\n== Merged MR's ==\n"
-for key, value in merged_mrs.iteritems():
+print("\n== Merged MR's ==\n")
+for key, value in merged_mrs.items():
     if human_readable:
-        print "{0} - {1}".format(value[0]["author"]["username"], len(value))
+        print("{0} - {1}".format(value[0]["author"]["username"], len(value)))
     for mr_value in value:
         if not human_readable:
             # 1 point to author for opening a merged MR
-            print "Merge Requests/GL{0}/{1}/{2} [org={3}, board={4}, linkId={5}]".format(mr_value['id'], mr_value['author']['username'], 1, mr_value['web_url'].split('/')[3], '/'.join(mr_value['web_url'].split('/')[4:(len(mr_value['web_url'].split('/'))-3)]), mr_value['web_url'].split('/')[-1])
+            print("Merge Requests/GL{0}/{1}/{2} [org={3}, board={4}, linkId={5}]".format(mr_value['id'], mr_value['author']['username'], 1, mr_value['web_url'].split('/')[3], '/'.join(mr_value['web_url'].split('/')[4:(len(mr_value['web_url'].split('/'))-3)]), mr_value['web_url'].split('/')[-1]))
             if is_debug:
-                print "  {0}".format(json.dumps(mr, indent=4, sort_keys=True))
+                print("  {0}".format(json.dumps(mr_value, indent=4, sort_keys=True)))
         else:
-            print "   {0} - {1}".format(encode_text(mr_value['web_url'].split('/')[-1]), encode_text(mr_value['title']))
+            print("   {0} - {1}".format(encode_text(mr_value['web_url'].split('/')[-1]), encode_text(mr_value['title'])))
 
 
-print "\n== Reviewed MR's ==\n"
-for key, value in reviewed_mrs.iteritems():
+print("\n== Reviewed MR's ==\n")
+for key, value in reviewed_mrs.items():
     if human_readable:
-        print "{0} - {1}".format(value[0]['merged_by']['username'], len(value))
+        print("{0} - {1}".format(value[0]['merged_by']['username'], len(value)))
     for mr_value in value:
         if not human_readable:
             # 1 point to reviewer (assuming merged_by is reviewer) for merged MR's
-            print "Reviewed Merge Requests/GL{0}/{1}/{2} [org={3}, board={4}, linkId={5}]".format(mr_value['id'], mr_value['merged_by']['username'], 1, mr_value['web_url'].split('/')[3], '/'.join(mr_value['web_url'].split('/')[4:(len(mr_value['web_url'].split('/'))-3)]), mr_value['web_url'].split('/')[-1])
+            print("Reviewed Merge Requests/GL{0}/{1}/{2} [org={3}, board={4}, linkId={5}]".format(mr_value['id'], mr_value['merged_by']['username'], 1, mr_value['web_url'].split('/')[3], '/'.join(mr_value['web_url'].split('/')[4:(len(mr_value['web_url'].split('/'))-3)]), mr_value['web_url'].split('/')[-1]))
             if is_debug:
-                print "  {0}".format(json.dumps(mr_value, indent=4, sort_keys=True))
+                print("  {0}".format(json.dumps(mr_value, indent=4, sort_keys=True)))
         else:
-            print "   {0} - {1}".format(encode_text(mr_value['web_url'].split('/')[-1]), encode_text(mr_value['title']))
+            print("   {0} - {1}".format(encode_text(mr_value['web_url'].split('/')[-1]), encode_text(mr_value['title'])))
 
 
-print "\n== Closed Issues ==\n"
-for key, value in closed_issues.iteritems():
+print("\n== Closed Issues ==\n")
+for key, value in closed_issues.items():
     if human_readable:
-        print "{0} - {1}".format(value[0]['closed_by']['username'], len(value))
+        print("{0} - {1}".format(value[0]['closed_by']['username'], len(value)))
     for iss_value in value:
         if not human_readable:
             # 1 point person who closes an issue
-            print "Closed Issues/GL{0}/{1}/{2} [org={3}, board={4}, linkId={5}]".format(iss_value['id'], iss_value['closed_by']['username'], 1, iss_value['web_url'].split('/')[3], '/'.join(iss_value['web_url'].split('/')[4:(len(iss_value['web_url'].split('/'))-3)]), iss_value['web_url'].split('/')[-1])
+            print("Closed Issues/GL{0}/{1}/{2} [org={3}, board={4}, linkId={5}]".format(iss_value['id'], iss_value['closed_by']['username'], 1, iss_value['web_url'].split('/')[3], '/'.join(iss_value['web_url'].split('/')[4:(len(iss_value['web_url'].split('/'))-3)]), iss_value['web_url'].split('/')[-1]))
             if is_debug:
-                print "  {0}".format(json.dumps(iss_value, indent=4, sort_keys=True))
+                print("  {0}".format(json.dumps(iss_value, indent=4, sort_keys=True)))
         else:
-            print "   {0} - {1}".format(encode_text(iss_value['web_url'].split('/')[-1]), encode_text(iss_value['title']))
+            print("   {0} - {1}".format(encode_text(iss_value['web_url'].split('/')[-1]), encode_text(iss_value['title'])))
