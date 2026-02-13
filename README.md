@@ -2,6 +2,22 @@
 
 This repo helps us calculate point values from contributions from our various communication channels.
 
+## Requirements
+
+- **Python 3** (all scripts require Python 3)
+- Install dependencies: `pip install -r requirements.txt`
+
+  | Script | Dependencies (beyond stdlib) |
+  |--------|------------------------------|
+  | github-stats.py | requests, python-dateutil |
+  | smartsheets-stats.py | smartsheet-python-sdk, python-dateutil |
+  | smartsheets-reports-stats.py | requests, python-dateutil |
+  | hangouts-chat.py | requests, oauth2client |
+  | trello-stats.py | requests, python-dateutil |
+  | rocketchat.py | requests, python-dateutil |
+  | gitlab-stats.py | requests, python-dateutil, pytz |
+  | mailman-subscribers.py | none (stdlib only) |
+
 ## GitHub contributions
 
 For contributions to GitHub, we use search filters to find people's contributions. You can run these from [github.com/pulls](https://github.com/pulls)

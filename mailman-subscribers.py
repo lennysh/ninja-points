@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # vi: set et sw=4 st=4:
 #
 # 2004-08-27 Jim Tittsler <jwt@starship.python.net>
@@ -156,60 +156,44 @@ Where:
    Tested with the Mailman 2.1.5 - 2.1.29 Membership list layout, but the
    --unhide option only works up to 2.1.22.
 
-   If Python 2.4's cookielib is available,  use it.  Otherwise require
-   ClientCookie  http://wwwsearch.sourceforge.net/ClientCookie/
-
-   This script runs on your workstation and requires that you have Python
-   <http://www.python.org> installed. It works best with Python 2.4.x
-   through Python 2.7.x. See mailman-subscribers3.py for a Python 3 version.
+   This script runs on your workstation and requires Python 3.
 """
 
 import sys
 import re
 import string
-import urllib
 import getopt
-import httplib
-import urllib2
 from time import sleep
-from HTMLParser import HTMLParser
-# if we have Python 2.4's cookielib, use it
-try:
-    import cookielib
-    policy = cookielib.DefaultCookiePolicy(rfc2965 = True)
-    cookiejar = cookielib.CookieJar(policy)
-    opener = urllib2.build_opener(urllib2.HTTPCookieProcessor(cookiejar)).open
-except ImportError:
-    import ClientCookie
-    # if this is a new ClientCookie, we need to turn on RFC2965 cookies
-    cookiejar = ClientCookie.CookieJar()
-    try:
-        cookiejar.set_policy(ClientCookie.DefaultCookiePolicy(rfc2965 = True))
-        # install an opener that uses this policy
-        opener = ClientCookie.build_opener(
-                ClientCookie.HTTPCookieProcessor(cookiejar))
-        ClientCookie.install_opener(opener)
-    except AttributeError:
-        # must be an old ClientCookie, which already accepts RFC2965 cookies
-        pass
-    opener = ClientCookie.urlopen
+from html.parser import HTMLParser
+from http.cookiejar import CookieJar, DefaultCookiePolicy
+from http.client import InvalidURL
+from urllib.request import build_opener, HTTPCookieProcessor
+from urllib.error import URLError, HTTPError
+from urllib import parse as urllib_parse
+
+# Python 3: use stdlib cookie jar and opener
+policy = DefaultCookiePolicy(rfc2965=True)
+cookiejar = CookieJar(policy)
+_opener_obj = build_opener(HTTPCookieProcessor(cookiejar))
+
+
+def opener(url, data=None):
+    """Open URL with optional POST data (dict). Data is form-encoded."""
+    if data is not None:
+        data = urllib_parse.urlencode(data).encode('utf-8')
+    return _opener_obj.open(url, data=data)
+
 
 PROGRAM = sys.argv[0]
-
-try:
-    True, False
-except NameError:
-    True = 1
-    False = 0
 
 def usage(code, msg=''):
     if code:
         fd = sys.stderr
     else:
         fd = sys.stdout
-    print >> fd, __doc__ % globals()
+    print(__doc__ % globals(), file=fd)
     if msg:
-        print >> fd, msg
+        print(msg, file=fd)
     sys.exit(code)
 
 subscribers = {}
@@ -233,17 +217,15 @@ class MailmanHTMLParser(HTMLParser):
                         subemail = v[:-len(vname)]
                         s = True
                     elif a == 'value':
-                        subval = v
+                        subval = v or ''
                 if s:
-                    if not subscribers.has_key(subemail):
+                    if subemail not in subscribers:
                         subscribers[subemail] = {}
                     if vname == '_nomail' and subval == "on":
                         gotnomail = True
                     else:
-                        if not isinstance(subval, unicode):
-                            subval = subval.decode(page_cset, 'replace')
-                        subscribers[subemail][vname] = subval.encode(
-                                                         my_cset, 'replace')
+                        # Python 3: HTMLParser gives str; store as-is
+                        subscribers[subemail][vname] = subval
         if tag == 'a':
             for a,v in attrs:
                 if a == 'href' and v.find("%s/" % (url_path)) >= 0:
@@ -288,7 +270,7 @@ def main():
         if o in ("-h", "--help"):
             usage(0)
         if o in ("-o", "--output"):
-            fp = open(a, "wt")
+            fp = open(a, "w", errors='replace')
         if o in ("-f", "--fullnames"):
             fullnames = True
         if o in ("-n", "--nomail"):
@@ -329,9 +311,9 @@ def main():
 
     # login, picking up the cookie
     try:
-        page = opener(member_url, urllib.urlencode(p))
-    except (urllib2.URLError, httplib.InvalidURL), e:
-        if isinstance(e, urllib2.HTTPError) and e.code == 401:
+        page = opener(member_url, p)
+    except (URLError, InvalidURL) as e:
+        if isinstance(e, HTTPError) and e.code == 401:
             usage(1, 'Invalid password.')
         else:
             usage(1, """Error accessing %s
@@ -340,12 +322,13 @@ or you may need to specify --url_path.
 """ % (member_url))
 
     # Get the charset of the page, but use iso-8859-1 for ascii or None.
-    page_cset = page.info().getparam('charset') or 'iso-8859-1'
-    if page_cset.lower().endswith('ascii'):
+    page_cset = page.headers.get_content_charset() or 'iso-8859-1'
+    if page_cset and page_cset.lower().endswith('ascii'):
         page_cset = 'iso-8859-1'
 
-    lines = page.read()
+    raw = page.read()
     page.close()
+    lines = raw.decode(page_cset, 'replace')
     p = {}
     # Try to recognize the returned page independent of the list language
     if re.search(r'INPUT\s+type="SUBMIT"\s+name="admlogin"', lines,
@@ -369,18 +352,17 @@ or you may need to specify --url_path.
         maxchunk = 0
         while chunk <= maxchunk:
             if verbose:
-                print >> sys.stderr, "%c(%d)" % (letter, chunk)
+                print("%c(%d)" % (letter, chunk), file=sys.stderr)
             while True:
                 try:
                     page = opener(member_url + "?letter=%s&chunk=%d" %
                             (letter, chunk))
-                    lines = page.read()
+                    raw = page.read()
                     page.close()
-                except urllib2.URLError:
+                    lines = raw.decode(page_cset, 'replace')
+                except URLError:
                     if verbose:
-                        print >> sys.stderr,\
-                            'Error encountered in accessing web page.',\
-                            'Retrying.'
+                        print('Error encountered in accessing web page. Retrying.', file=sys.stderr)
                     sleep(2)
                 else:
                     break
@@ -390,44 +372,41 @@ or you may need to specify --url_path.
             parser.close()
             chunk += 1
 
-    subscriberlist = subscribers.items()
-    subscriberlist.sort()
+    subscriberlist = sorted(subscribers.items())
 
     # print the subscribers list
     if csv:
-        print >>fp, '"Full name","email address","mod","hide",\
-"nomail","ack","not metoo","nodupes","digest","plain"'
+        print('"Full name","email address","mod","hide",'
+              '"nomail","ack","not metoo","nodupes","digest","plain"', file=fp)
 
     nunhide = 0
     for (email, d) in subscriberlist:
         if unhide and d['_hide'] == "on":
-            params = urllib.urlencode({'conceal':0,
-                                       'options-submit':1})
+            params = {'conceal': 0, 'options-submit': 1}
             u = opener("%s/%s" % (options_url, email), params)
             u.close()
             d['_hide'] = "off"
             nunhide += 1
             if verbose and nunhide % 100 == 0:
-                print >>sys.stderr, '.',
-        email = urllib.unquote(email)
+                print('.', end='', file=sys.stderr)
+        email = urllib_parse.unquote(email)
         if csv:
-            print >>fp,\
-                '"%s","%s","%s","%s","%s","%s","%s","%s","%s","%s"'\
-                 % (d['_realname'], email, d['_mod'], d['_hide'],
-                    d['_nomail'], d['_ack'], d['_notmetoo'],
-                    d['_nodupes'], d['_digest'], d['_plain'])
+            print('"%s","%s","%s","%s","%s","%s","%s","%s","%s","%s"' %
+                  (d['_realname'], email, d['_mod'], d['_hide'],
+                   d['_nomail'], d['_ack'], d['_notmetoo'],
+                   d['_nodupes'], d['_digest'], d['_plain']), file=fp)
             continue
-        if nomail == 'enabled' and d['_nomail'] <> "off":
+        if nomail == 'enabled' and d['_nomail'] != "off":
             continue
         if nomail == 'any' and d['_nomail'] == "off":
             continue
-        if nomail == 'admin' and d['_nomail'] <> "[A]":
+        if nomail == 'admin' and d['_nomail'] != "[A]":
             continue
-        if nomail == 'bounce' and d['_nomail'] <> "[B]":
+        if nomail == 'bounce' and d['_nomail'] != "[B]":
             continue
-        if nomail == 'user' and d['_nomail'] <> "[U]":
+        if nomail == 'user' and d['_nomail'] != "[U]":
             continue
-        if nomail == 'unknown' and d['_nomail'] <> "[?]":
+        if nomail == 'unknown' and d['_nomail'] != "[?]":
             continue
         if regular and d['_digest'] == "on":
             continue
@@ -438,9 +417,9 @@ or you may need to specify --url_path.
         if digest == "plain" and d['_plain'] == "off":
             continue
         if not fullnames or d['_realname'] == "":
-            print >>fp, email
+            print(email, file=fp)
         else:
-            print >>fp, '%s <%s>' % (d['_realname'], email)
+            print('%s <%s>' % (d['_realname'], email), file=fp)
 
     fp.close()
 
